@@ -55,6 +55,8 @@ class PhoneticEditDistance(Levenshtein):
         cost: Tuple[float, float, float, float] = (1, 1, 1, 0.33333),
         normalizer: Callable[[List[float]], float] = max,
         weights: Optional[Union[Iterable[float], Dict[str, float]]] = None,
+        vowel_dominance: bool = False,
+        vowel_ignorance: bool = False,
         **kwargs: Any
     ):
         """Initialize PhoneticEditDistance instance.
@@ -104,16 +106,22 @@ class PhoneticEditDistance(Levenshtein):
         self._mode = mode
         self._cost = cost
         self._normalizer = normalizer
+        self._vowel_dominance = vowel_dominance
+        self._vowel_ignorance = vowel_ignorance
 
-        if isinstance(weights, dict):
-            weights = [
-                weights[feature] if feature in weights else 0
-                for feature in sorted(
-                    _FEATURE_MASK, key=_FEATURE_MASK.get, reverse=True
-                )
-            ]
-        elif isinstance(weights, (list, tuple)):
-            weights = list(weights) + [0] * (len(_FEATURE_MASK) - len(weights))
+        # if isinstance(weights, dict):
+        #     weights = [
+        #         weights[feature] if feature in weights else 0
+        #         for feature in sorted(
+        #             _FEATURE_MASK, key=_FEATURE_MASK.get, reverse=True
+        #         )
+        #     ]
+        # elif isinstance(weights, (list, tuple)):
+        #     weights = list(weights) + [0] * (len(_FEATURE_MASK) - len(weights))
+
+        # we can keep the dict as is because it will get messed with anyways
+        if isinstance(weights, (list, tuple)):
+            weights = cast(Sequence[float], weights)
         self._weights = weights
 
     def _alignment_matrix(
@@ -173,7 +181,10 @@ class PhoneticEditDistance(Levenshtein):
                             - cmp_features(
                                 src_list[i],
                                 tar_list[j],
+                                # TODO: fix this
                                 cast(Sequence[float], self._weights),
+                                vowel_dominance=self._vowel_dominance,
+                                vowel_ignorance=self._vowel_ignorance,
                             )
                         )
                         if src_list[i] != tar_list[j]
