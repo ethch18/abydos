@@ -576,6 +576,55 @@ _FEATURE_MASK = {
     'delayed_release': 3,
 }
 
+_MANNER_FEATURES = [
+    'consonantal',
+    'sonorant',
+    'approximant',
+    'delayed_release',
+    'continuant',
+    'nasal',
+]
+_PLACE_FEATURES = [
+    'labial',
+    'round',
+    'labiodental',
+    'coronal',
+    'anterior',
+    'distributed',
+    'dorsal',
+    'high',
+    'low',
+    'front',
+    'back',
+    'tense',
+    'strident',
+    'lateral',
+    'protruded',  # considered like round
+    'compressed',  # considered like round
+    'pharyngeal',
+    'atr',  # considered like tense
+    'rtr',  # considered like tense
+]
+_LARYNG_FEATURES = [
+    'voice',
+    'spread_glottis',
+    'constricted_glottis',
+    'glottalic_suction',
+    'velaric_suction',
+]
+
+
+def build_weights(syllabic_weight: float,
+                  manner_weight: float,
+                  place_weight: float,
+                  laryngeal_weight: float,
+                  ) -> Dict[str, Union[int, float]]:
+    weights = {'syllabic': syllabic_weight}
+    weights.update({feat : manner_weight for feat in _MANNER_FEATURES})
+    weights.update({feat : place_weight for feat in _PLACE_FEATURES})
+    weights.update({feat : laryngeal_weight for feat in _LARYNG_FEATURES})
+    return weights
+
 
 def ipa_to_features(ipa: str) -> List[int]:
     """Convert IPA to features.
@@ -900,6 +949,8 @@ def cmp_features(
     weights: Optional[
         Union[Sequence[Union[int, float]], Dict[str, Union[int, float]]]
     ] = None,
+    vowel_dominance: bool = False,
+    vowel_ignorance: bool = False,
 ) -> float:
     """Compare features.
 
@@ -929,6 +980,13 @@ def cmp_features(
         _FEATURE_MASK to which each weight (value) should be assigned. Missing
         values in all cases are assigned a weight of 0 and will be omitted from
         the comparison.
+    vowel_dominance : bool
+        If True, feature bundles that differ in the 'syllabic' feature will
+        be treated as maximally different, and this feature will be ignored in
+        the computation of the (weighted) Hamming distance.
+    vowel_ignorance : bool
+        If True, feature bundles that both have + as their value for the
+        'syllabic' feature will be treated as maximally similar.
 
     Returns
     -------
@@ -956,12 +1014,32 @@ def cmp_features(
     if feat1 == feat2:
         return 1.0
 
+    if vowel_ignorance:
+        syllabic_mask = _FEATURE_MASK['syllabic']
+        if (feat1 & syllabic_mask) == (feat2 & syllabic_mask) \
+                == 1152921504606846976:
+            # ^ is syllabic mask without the leading 1
+            # both are +syllabic
+            return 1.0
+
+    diffbits_offset = 0
+    if vowel_dominance:
+        syllabic_mask = _FEATURE_MASK['syllabic']
+        if (feat1 & syllabic_mask) != (feat2 & syllabic_mask):
+            # differ in syllabicity --> minimal similarity
+            return 0.0
+        else:
+            # hacky way of ignoring the syllabicity feature without explicitly
+            # handling it in the xor loop
+            diffbits_offset = -1
+
     # This should be handled some other way since this will take a long time
     # when done repeatedly. Maybe convert to a class & save the weights list.
     if weights is not None:
         if isinstance(weights, dict):
             weights = [
-                weights[feature] if feature in weights else 0
+                weights[feature] if feature in weights and
+                (feature != 'syllabic' or not vowel_dominance) else 0
                 for feature in sorted(
                     _FEATURE_MASK, key=_FEATURE_MASK.get, reverse=True
                 )
@@ -971,7 +1049,8 @@ def cmp_features(
         else:
             raise TypeError('weights must be a dist, list, or tuple.')
 
-    magnitude = sum(weights) if weights else len(_FEATURE_MASK)
+    magnitude = sum(weights) if weights else \
+        (len(_FEATURE_MASK) - int(vowel_dominance))
 
     """
     # Alternate implementation
@@ -1002,6 +1081,7 @@ def cmp_features(
             diffbits += weights[i] if weights else 1
         featxor >>= 1
         i += 1
+    diffbits += diffbits_offset
     return 1 - (0 if not diffbits else (diffbits / (2 * magnitude)))
 
 
