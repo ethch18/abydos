@@ -836,6 +836,17 @@ def ipa_to_feature_dicts(ipa: str) -> List[Dict[str, str]]:
     return features
 
 
+def diff_feature_dicts(src: str, tgt: str) -> List[str]:
+    src_dict = ipa_to_feature_dicts(src)[0]
+    tgt_dict = ipa_to_feature_dicts(tgt)[0]
+
+    diff_feats = []
+    for feat in src_dict:
+        if src_dict[feat] != tgt_dict[feat]:
+            diff_feats.append(feat)
+    return diff_feats
+
+
 def get_feature(vector: List[int], feature: str) -> List[Union[int, float]]:
     """Get a feature vector.
 
@@ -1022,16 +1033,11 @@ def cmp_features(
             # both are +syllabic
             return 1.0
 
-    diffbits_offset = 0
     if vowel_dominance:
         syllabic_mask = _FEATURE_MASK['syllabic']
         if (feat1 & syllabic_mask) != (feat2 & syllabic_mask):
             # differ in syllabicity --> minimal similarity
             return 0.0
-        else:
-            # hacky way of ignoring the syllabicity feature without explicitly
-            # handling it in the xor loop
-            diffbits_offset = -1
 
     # This should be handled some other way since this will take a long time
     # when done repeatedly. Maybe convert to a class & save the weights list.
@@ -1048,6 +1054,10 @@ def cmp_features(
             weights = list(weights) + [0] * (len(_FEATURE_MASK) - len(weights))
         else:
             raise TypeError('weights must be a dist, list, or tuple.')
+
+        # Everywhere else, the order is "supposed" to be larger mask first
+        # but we're taking the xors lowest to highest
+        weights.reverse()
 
     magnitude = sum(weights) if weights else \
         (len(_FEATURE_MASK) - int(vowel_dominance))
@@ -1081,7 +1091,6 @@ def cmp_features(
             diffbits += weights[i] if weights else 1
         featxor >>= 1
         i += 1
-    diffbits += diffbits_offset
     return 1 - (0 if not diffbits else (diffbits / (2 * magnitude)))
 
 

@@ -109,19 +109,17 @@ class PhoneticEditDistance(Levenshtein):
         self._vowel_dominance = vowel_dominance
         self._vowel_ignorance = vowel_ignorance
 
-        # if isinstance(weights, dict):
-        #     weights = [
-        #         weights[feature] if feature in weights else 0
-        #         for feature in sorted(
-        #             _FEATURE_MASK, key=_FEATURE_MASK.get, reverse=True
-        #         )
-        #     ]
-        # elif isinstance(weights, (list, tuple)):
-        #     weights = list(weights) + [0] * (len(_FEATURE_MASK) - len(weights))
+        if isinstance(weights, dict):
+            weights = [
+                weights[feature] if feature in weights and
+                (feature != 'syllabic' or not self._vowel_dominance) else 0
+                for feature in sorted(
+                    _FEATURE_MASK, key=_FEATURE_MASK.get, reverse=True
+                )
+            ]
+        elif isinstance(weights, (list, tuple)):
+            weights = list(weights) + [0] * (len(_FEATURE_MASK) - len(weights))
 
-        # we can keep the dict as is because it will get messed with anyways
-        if isinstance(weights, (list, tuple)):
-            weights = cast(Sequence[float], weights)
         self._weights = weights
 
     def _alignment_matrix(
@@ -149,11 +147,11 @@ class PhoneticEditDistance(Levenshtein):
         """
         ins_cost, del_cost, sub_cost, trans_cost = self._cost
 
-        src_len = len(src)
-        tar_len = len(tar)
-
         src_list = ipa_to_features(src)
         tar_list = ipa_to_features(tar)
+
+        src_len = len(src_list)
+        tar_len = len(tar_list)
 
         d_mat = np.zeros((src_len + 1, tar_len + 1), dtype=np.float_)
         if backtrace:
@@ -181,7 +179,6 @@ class PhoneticEditDistance(Levenshtein):
                             - cmp_features(
                                 src_list[i],
                                 tar_list[j],
-                                # TODO: fix this
                                 cast(Sequence[float], self._weights),
                                 vowel_dominance=self._vowel_dominance,
                                 vowel_ignorance=self._vowel_ignorance,
@@ -211,7 +208,30 @@ class PhoneticEditDistance(Levenshtein):
                             trace_mat[i + 1, j + 1] = 2
         if backtrace:
             return d_mat, trace_mat
-        return d_mat
+        return d_mat, src_len, tar_len
+
+    def _dist_abs(self, src: str, tar: str) -> float:
+        ins_cost, del_cost, sub_cost, trans_cost = self._cost
+
+        src_len = len(src)
+        tar_len = len(tar)
+
+        if src == tar:
+            return 0
+        if not src:
+            return ins_cost * tar_len
+        if not tar:
+            return del_cost * src_len
+
+        d_mat, src_len, tar_len = self._alignment_matrix(
+            src, tar, backtrace=False)
+        d_mat = cast(
+            np.ndarray, d_mat)
+
+        if int(d_mat[src_len, tar_len]) == d_mat[src_len, tar_len]:
+            return int(d_mat[src_len, tar_len]), src_len, tar_len
+        else:
+            return cast(float, d_mat[src_len, tar_len]), src_len, tar_len
 
     def dist_abs(self, src: str, tar: str) -> float:
         """Return the phonetic edit distance between two strings.
@@ -250,26 +270,7 @@ class PhoneticEditDistance(Levenshtein):
         .. versionadded:: 0.4.1
 
         """
-        ins_cost, del_cost, sub_cost, trans_cost = self._cost
-
-        src_len = len(src)
-        tar_len = len(tar)
-
-        if src == tar:
-            return 0
-        if not src:
-            return ins_cost * tar_len
-        if not tar:
-            return del_cost * src_len
-
-        d_mat = cast(
-            np.ndarray, self._alignment_matrix(src, tar, backtrace=False)
-        )
-
-        if int(d_mat[src_len, tar_len]) == d_mat[src_len, tar_len]:
-            return int(d_mat[src_len, tar_len])
-        else:
-            return cast(float, d_mat[src_len, tar_len])
+        return self._dist_abs(src, tar)[0]
 
     def dist(self, src: str, tar: str) -> float:
         """Return the normalized phonetic edit distance between two strings.
@@ -313,14 +314,13 @@ class PhoneticEditDistance(Levenshtein):
             return 0.0
         ins_cost, del_cost = self._cost[:2]
 
-        src_len = len(src)
-        tar_len = len(tar)
+        abs_dist, src_len, tar_len = self._dist_abs(src, tar)
 
         normalize_term = self._normalizer(
             [src_len * del_cost, tar_len * ins_cost]
         )
 
-        return self.dist_abs(src, tar) / normalize_term
+        return abs_dist / normalize_term
 
 
 if __name__ == '__main__':
