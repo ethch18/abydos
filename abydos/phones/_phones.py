@@ -962,6 +962,7 @@ def cmp_features(
     ] = None,
     vowel_dominance: bool = False,
     vowel_ignorance: bool = False,
+    no_features: bool = False,
 ) -> float:
     """Compare features.
 
@@ -998,6 +999,9 @@ def cmp_features(
     vowel_ignorance : bool
         If True, feature bundles that both have + as their value for the
         'syllabic' feature will be treated as maximally similar.
+    no_features : bool
+        If True, feature bundles will be evaluated on whether or not they are
+        equal.  This comes after vowel ignorance and dominance.
 
     Returns
     -------
@@ -1038,6 +1042,9 @@ def cmp_features(
         if (feat1 & syllabic_mask) != (feat2 & syllabic_mask):
             # differ in syllabicity --> minimal similarity
             return 0.0
+
+    if no_features and feat1 != feat2:
+        return 0.0
 
     # This should be handled some other way since this will take a long time
     # when done repeatedly. Maybe convert to a class & save the weights list.
@@ -1080,18 +1087,47 @@ def cmp_features(
     return 1 - (diff_feats / magnitude)
     """
 
-    featxor = feat1 ^ feat2
+    # featxor = feat1 ^ feat2
+    # diffbits = 0.0
+    # i = 0
+    # while featxor:
+    #     if featxor & 0b1:
+    #         diffbits += weights[i] if weights else 1
+    #     featxor >>= 1
+    #     if featxor & 0b1:
+    #         diffbits += weights[i] if weights else 1
+    #     featxor >>= 1
+    #     i += 1
+    # return 1 - (0 if not diffbits else (diffbits / (2 * magnitude)))
+    feat1_c, feat2_c = feat1, feat2
     diffbits = 0.0
     i = 0
-    while featxor:
-        if featxor & 0b1:
-            diffbits += weights[i] if weights else 1
-        featxor >>= 1
-        if featxor & 0b1:
-            diffbits += weights[i] if weights else 1
-        featxor >>= 1
+    while feat1_c and feat2_c:
+        f1 = feat1_c & 0b11
+        f2 = feat2_c & 0b11
+        feat1_c >>= 2
+        feat2_c >>= 2
+        score = _score(f1, f2)
+        diffbits += score * (weights[i] if weights else 1)
+
         i += 1
     return 1 - (0 if not diffbits else (diffbits / (2 * magnitude)))
+
+
+def _score(f1, f2):
+    # 11, 01 -> 1
+    # 11, 10 -> 1
+    # 11, 00 -> 2
+    # 10, 01 -> 1
+    # 10, 00 -> 2
+    # 01, 00 -> 2
+    # anything to itself -> 0
+    if f1 == f2:
+        return 0
+    elif f1 == 0 or f2 == 0:
+        return 2
+    else:
+        return 1
 
 
 if __name__ == '__main__':

@@ -57,6 +57,7 @@ class PhoneticEditDistance(Levenshtein):
         weights: Optional[Union[Iterable[float], Dict[str, float]]] = None,
         vowel_dominance: bool = False,
         vowel_ignorance: bool = False,
+        no_features: bool = False,
         **kwargs: Any
     ):
         """Initialize PhoneticEditDistance instance.
@@ -108,6 +109,7 @@ class PhoneticEditDistance(Levenshtein):
         self._normalizer = normalizer
         self._vowel_dominance = vowel_dominance
         self._vowel_ignorance = vowel_ignorance
+        self._no_features = no_features
 
         if isinstance(weights, dict):
             weights = [
@@ -182,6 +184,7 @@ class PhoneticEditDistance(Levenshtein):
                                 cast(Sequence[float], self._weights),
                                 vowel_dominance=self._vowel_dominance,
                                 vowel_ignorance=self._vowel_ignorance,
+                                no_features=self._no_features,
                             )
                         )
                         if src_list[i] != tar_list[j]
