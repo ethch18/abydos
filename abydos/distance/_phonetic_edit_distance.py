@@ -220,11 +220,11 @@ class PhoneticEditDistance(Levenshtein):
         tar_len = len(tar)
 
         if src == tar:
-            return 0
+            return 0, src_len, tar_len
         if not src:
-            return ins_cost * tar_len
+            return ins_cost * tar_len, src_len, tar_len
         if not tar:
-            return del_cost * src_len
+            return del_cost * src_len, src_len, tar_len
 
         d_mat, src_len, tar_len = self._alignment_matrix(
             src, tar, backtrace=False)
