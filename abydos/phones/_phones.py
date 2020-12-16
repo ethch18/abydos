@@ -614,15 +614,16 @@ _LARYNG_FEATURES = [
 ]
 
 
-def build_weights(syllabic_weight: float,
-                  manner_weight: float,
-                  place_weight: float,
-                  laryngeal_weight: float,
-                  ) -> Dict[str, Union[int, float]]:
+def build_weights(
+    syllabic_weight: float,
+    manner_weight: float,
+    place_weight: float,
+    laryngeal_weight: float,
+) -> Dict[str, Union[int, float]]:
     weights = {'syllabic': syllabic_weight}
-    weights.update({feat : manner_weight for feat in _MANNER_FEATURES})
-    weights.update({feat : place_weight for feat in _PLACE_FEATURES})
-    weights.update({feat : laryngeal_weight for feat in _LARYNG_FEATURES})
+    weights.update({feat: manner_weight for feat in _MANNER_FEATURES})
+    weights.update({feat: place_weight for feat in _PLACE_FEATURES})
+    weights.update({feat: laryngeal_weight for feat in _LARYNG_FEATURES})
     return weights
 
 
@@ -954,6 +955,10 @@ def get_feature(vector: List[int], feature: str) -> List[Union[int, float]]:
     return retvec
 
 
+def is_vowel(feat: int) -> bool:
+    return (feat & _FEATURE_MASK['syllabic']) == 1152921504606846976
+
+
 def cmp_features(
     feat1: int,
     feat2: int,
@@ -1031,8 +1036,11 @@ def cmp_features(
 
     if vowel_ignorance:
         syllabic_mask = _FEATURE_MASK['syllabic']
-        if (feat1 & syllabic_mask) == (feat2 & syllabic_mask) \
-                == 1152921504606846976:
+        if (
+            (feat1 & syllabic_mask)
+            == (feat2 & syllabic_mask)
+            == 1152921504606846976
+        ):
             # ^ is syllabic mask without the leading 1
             # both are +syllabic
             return 1.0
@@ -1051,8 +1059,10 @@ def cmp_features(
     if weights is not None:
         if isinstance(weights, dict):
             weights = [
-                weights[feature] if feature in weights and
-                (feature != 'syllabic' or not vowel_dominance) else 0
+                weights[feature]
+                if feature in weights
+                and (feature != 'syllabic' or not vowel_dominance)
+                else 0
                 for feature in sorted(
                     _FEATURE_MASK, key=_FEATURE_MASK.get, reverse=True
                 )
@@ -1066,8 +1076,11 @@ def cmp_features(
         # but we're taking the xors lowest to highest
         weights.reverse()
 
-    magnitude = sum(weights) if weights else \
-        (len(_FEATURE_MASK) - int(vowel_dominance))
+    magnitude = (
+        sum(weights)
+        if weights
+        else (len(_FEATURE_MASK) - int(vowel_dominance))
+    )
 
     """
     # Alternate implementation

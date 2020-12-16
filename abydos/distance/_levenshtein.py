@@ -60,6 +60,9 @@ class Levenshtein(_Distance):
         cost: Tuple[float, float, float, float] = (1, 1, 1, 1),
         normalizer: Callable[[List[float]], float] = max,
         taper: bool = False,
+        vowel_ignorance: bool = False,
+        vowel_ignorance_ins_del: bool = False,
+        no_vowels: bool = False,
         **kwargs: Any
     ) -> None:
         """Initialize Levenshtein instance.
@@ -101,6 +104,11 @@ class Levenshtein(_Distance):
         self._cost = cost
         self._normalizer = normalizer
         self._taper_enabled = taper
+        self._vowel_ignorance = vowel_ignorance
+        self._vowel_ignorance_ins_del = vowel_ignorance_ins_del
+        self._no_vowels = no_vowels
+
+        assert not self._no_vowels and self._vowel_ignorance
 
     def _taper(self, pos: int, length: int) -> float:
         return (
@@ -108,6 +116,10 @@ class Levenshtein(_Distance):
             if self._taper_enabled
             else 1
         )
+
+    @staticmethod
+    def _is_vowel(char: str) -> bool:
+        return char.lower() in ('a', 'e', 'i', 'o', 'u')
 
     def _alignment_matrix(
         self, src: str, tar: str, backtrace: bool = True
@@ -134,19 +146,36 @@ class Levenshtein(_Distance):
         """
         ins_cost, del_cost, sub_cost, trans_cost = self._cost
 
+        if self._no_vowels:
+            src = ''.join(c for c in src if not self._is_vowel(c))
+            tar = ''.join(c for c in tar if not self._is_vowel(c))
+
         src_len = len(src)
         tar_len = len(tar)
         max_len = max(src_len, tar_len)
 
+        if self._vowel_ignorance_ins_del:
+            src_vow = [self._is_vowel(c) for c in src]
+            tar_vow = [self._is_vowel(c) for c in tar]
+        else:
+            src_vow = [False for _ in src]
+            tar_vow = [False for _ in tar]
+
         d_mat = np.zeros((src_len + 1, tar_len + 1), dtype=np.float_)
         if backtrace:
             trace_mat = np.zeros((src_len + 1, tar_len + 1), dtype=np.int8)
-        for i in range(src_len + 1):
-            d_mat[i, 0] = i * self._taper(i, max_len) * del_cost
+        for i in range(1, src_len + 1):
+            # d_mat[i, 0] = i * self._taper(i, max_len) * del_cost
+            d_mat[i, 0] = d_mat[i - 1, 0] + self._taper(i, max_len) * (
+                del_cost if not src_vow[i - 1] else 0
+            )
             if backtrace:
                 trace_mat[i, 0] = 1
-        for j in range(tar_len + 1):
-            d_mat[0, j] = j * self._taper(j, max_len) * ins_cost
+        for j in range(1, tar_len + 1):
+            # d_mat[0, j] = j * self._taper(j, max_len) * ins_cost
+            d_mat[0, j] = d_mat[0, j - 1] + self._taper(j, max_len) * (
+                ins_cost if not tar_vow[j - 1] else 0
+            )
             if backtrace:
                 trace_mat[0, j] = 0
 
@@ -154,12 +183,23 @@ class Levenshtein(_Distance):
             for j in range(tar_len):
                 opts = (
                     d_mat[i + 1, j]
-                    + ins_cost * self._taper(1 + max(i, j), max_len),  # ins
+                    + (ins_cost if not tar_vow[j] else 0)
+                    * self._taper(1 + max(i, j), max_len),  # ins
                     d_mat[i, j + 1]
-                    + del_cost * self._taper(1 + max(i, j), max_len),  # del
+                    + (del_cost if not src_vow[i] else 0)
+                    * self._taper(1 + max(i, j), max_len),  # del
                     d_mat[i, j]
                     + (
-                        sub_cost * self._taper(1 + max(i, j), max_len)
+                        (
+                            sub_cost
+                            if not self._vowel_ignorance
+                            or not (
+                                self._is_vowel(src[i])
+                                and self._is_vowel(src[j])
+                            )
+                            else 0
+                        )
+                        * self._taper(1 + max(i, j), max_len)
                         if src[i] != tar[j]
                         else 0
                     ),  # sub/==
@@ -226,6 +266,9 @@ class Levenshtein(_Distance):
         .. versionadded:: 0.4.1
 
         """
+        if self._no_vowels:
+            src = ''.join(c for c in src if not self._is_vowel(c))
+            tar = ''.join(c for c in tar if not self._is_vowel(c))
         d_mat, trace_mat = self._alignment_matrix(src, tar, backtrace=True)
 
         src_aligned = []
@@ -305,6 +348,9 @@ class Levenshtein(_Distance):
 
         """
         ins_cost, del_cost, sub_cost, trans_cost = self._cost
+        if self._no_vowels:
+            src = ''.join(c for c in src if not self._is_vowel(c))
+            tar = ''.join(c for c in tar if not self._is_vowel(c))
 
         src_len = len(src)
         tar_len = len(tar)
@@ -373,6 +419,9 @@ class Levenshtein(_Distance):
         if src == tar:
             return 0.0
         ins_cost, del_cost = self._cost[:2]
+        if self._no_vowels:
+            src = ''.join(c for c in src if not self._is_vowel(c))
+            tar = ''.join(c for c in tar if not self._is_vowel(c))
 
         src_len = len(src)
         tar_len = len(tar)

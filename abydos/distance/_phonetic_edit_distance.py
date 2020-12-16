@@ -19,6 +19,7 @@
 Phonetic edit distance
 """
 
+import sys
 from typing import (
     Any,
     Callable,
@@ -35,7 +36,12 @@ from typing import (
 import numpy as np
 
 from ._levenshtein import Levenshtein
-from ..phones._phones import _FEATURE_MASK, cmp_features, ipa_to_features
+from ..phones._phones import (
+    _FEATURE_MASK,
+    cmp_features,
+    ipa_to_features,
+    is_vowel,
+)
 
 __all__ = ['PhoneticEditDistance']
 
@@ -57,8 +63,10 @@ class PhoneticEditDistance(Levenshtein):
         weights: Optional[Union[Iterable[float], Dict[str, float]]] = None,
         vowel_dominance: bool = False,
         vowel_ignorance: bool = False,
+        vowel_ignorance_ins_del: bool = False,
+        no_vowels: bool = False,
         no_features: bool = False,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """Initialize PhoneticEditDistance instance.
 
@@ -109,12 +117,18 @@ class PhoneticEditDistance(Levenshtein):
         self._normalizer = normalizer
         self._vowel_dominance = vowel_dominance
         self._vowel_ignorance = vowel_ignorance
+        self._vowel_ignorance_ins_del = vowel_ignorance_ins_del
+        self._no_vowels = no_vowels
         self._no_features = no_features
+
+        assert not self._no_vowels and self._vowel_ignorance
 
         if isinstance(weights, dict):
             weights = [
-                weights[feature] if feature in weights and
-                (feature != 'syllabic' or not self._vowel_dominance) else 0
+                weights[feature]
+                if feature in weights
+                and (feature != 'syllabic' or not self._vowel_dominance)
+                else 0
                 for feature in sorted(
                     _FEATURE_MASK, key=_FEATURE_MASK.get, reverse=True
                 )
@@ -152,6 +166,17 @@ class PhoneticEditDistance(Levenshtein):
         src_list = ipa_to_features(src)
         tar_list = ipa_to_features(tar)
 
+        if self._no_vowels:
+            src_list = [feat for feat in src_list if not is_vowel(feat)]
+            tar_list = [feat for feat in tar_list if not is_vowel(feat)]
+
+        if self._vowel_ignorance_ins_del:
+            src_vow = [is_vowel(feat) for feat in src_list]
+            tar_vow = [is_vowel(feat) for feat in tar_list]
+        else:
+            src_vow = [False for _ in src_list]
+            tar_vow = [False for _ in tar_list]
+
         src_len = len(src_list)
         tar_len = len(tar_list)
 
@@ -159,11 +184,17 @@ class PhoneticEditDistance(Levenshtein):
         if backtrace:
             trace_mat = np.zeros((src_len + 1, tar_len + 1), dtype=np.int8)
         for i in range(1, src_len + 1):
-            d_mat[i, 0] = i * del_cost
+            # d_mat[i, 0] = i * del_cost
+            d_mat[i, 0] = d_mat[i - 1, 0] + (
+                del_cost if not src_vow[i - 1] else 0
+            )
             if backtrace:
                 trace_mat[i, 0] = 0
         for j in range(1, tar_len + 1):
-            d_mat[0, j] = j * ins_cost
+            # d_mat[0, j] = j * ins_cost
+            d_mat[0, j] = d_mat[0, j - 1] + (
+                ins_cost if not tar_vow[j - 1] else 0
+            )
             if backtrace:
                 trace_mat[0, j] = 1
 
@@ -171,8 +202,10 @@ class PhoneticEditDistance(Levenshtein):
             for j in range(tar_len):
                 traces = ((i + 1, j), (i, j + 1), (i, j))
                 opts = (
-                    d_mat[traces[0]] + ins_cost,  # ins
-                    d_mat[traces[1]] + del_cost,  # del
+                    d_mat[traces[0]]
+                    + (ins_cost if not tar_vow[j] else 0),  # ins
+                    d_mat[traces[1]]
+                    + (del_cost if not src_vow[i] else 0),  # del
                     d_mat[traces[2]]
                     + (
                         sub_cost
@@ -222,14 +255,24 @@ class PhoneticEditDistance(Levenshtein):
         if src == tar:
             return 0, src_len, tar_len
         if not src:
+            if self._no_vowels:
+                print(
+                    f"Warning: full-length comparison of {src} to {tar} doesn't support no_vowels",
+                    file=sys.stderr,
+                )
             return ins_cost * tar_len, src_len, tar_len
         if not tar:
+            if self._no_vowels:
+                print(
+                    f"Warning: full-length comparison of {tar} from {src} doesn't support no_vowels",
+                    file=sys.stderr,
+                )
             return del_cost * src_len, src_len, tar_len
 
         d_mat, src_len, tar_len = self._alignment_matrix(
-            src, tar, backtrace=False)
-        d_mat = cast(
-            np.ndarray, d_mat)
+            src, tar, backtrace=False
+        )
+        d_mat = cast(np.ndarray, d_mat)
 
         if int(d_mat[src_len, tar_len]) == d_mat[src_len, tar_len]:
             return int(d_mat[src_len, tar_len]), src_len, tar_len
