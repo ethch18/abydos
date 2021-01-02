@@ -195,7 +195,7 @@ class Levenshtein(_Distance):
                             if not self._vowel_ignorance
                             or not (
                                 self._is_vowel(src[i])
-                                and self._is_vowel(src[j])
+                                and self._is_vowel(tar[j])
                             )
                             else 0
                         )
