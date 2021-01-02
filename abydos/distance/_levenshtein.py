@@ -108,7 +108,7 @@ class Levenshtein(_Distance):
         self._vowel_ignorance_ins_del = vowel_ignorance_ins_del
         self._no_vowels = no_vowels
 
-        assert not self._no_vowels and self._vowel_ignorance
+        assert not (self._no_vowels and self._vowel_ignorance)
 
     def _taper(self, pos: int, length: int) -> float:
         return (

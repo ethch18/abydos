@@ -121,7 +121,7 @@ class PhoneticEditDistance(Levenshtein):
         self._no_vowels = no_vowels
         self._no_features = no_features
 
-        assert not self._no_vowels and self._vowel_ignorance
+        assert not (self._no_vowels and self._vowel_ignorance)
 
         if isinstance(weights, dict):
             weights = [
