@@ -23,6 +23,7 @@ based on Levenshtein distance, including:
     - Optimal String Alignment distance
 """
 
+import unicodedata
 from sys import float_info
 from typing import Any, Callable, List, Tuple, Union, cast
 
@@ -119,6 +120,13 @@ class Levenshtein(_Distance):
 
     @staticmethod
     def _is_vowel(char: str) -> bool:
+        # follow BERT in using NFD
+        # setup from https://stackoverflow.com/a/517974
+        char = [
+            c
+            for c in unicodedata.normalize("NFD", char)
+            if not unicodedata.combining(c)
+        ]
         return char.lower() in ('a', 'e', 'i', 'o', 'u')
 
     def _alignment_matrix(
@@ -444,7 +452,12 @@ class Levenshtein(_Distance):
                 [src_len * del_cost, tar_len * ins_cost]
             )
 
-        return self.dist_abs(src, tar) / normalize_term
+        abs_dist = self.dist_abs(src, tar)
+        if normalize_term == 0:
+            assert abs_dist == 0
+            return 0
+
+        return abs_dist / normalize_term
 
 
 if __name__ == '__main__':

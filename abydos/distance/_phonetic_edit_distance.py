@@ -366,6 +366,10 @@ class PhoneticEditDistance(Levenshtein):
             [src_len * del_cost, tar_len * ins_cost]
         )
 
+        if normalize_term == 0:
+            assert abs_dist == 0
+            return 0
+
         return abs_dist / normalize_term
 
 
