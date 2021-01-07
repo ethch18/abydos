@@ -122,11 +122,13 @@ class Levenshtein(_Distance):
     def _is_vowel(char: str) -> bool:
         # follow BERT in using NFD
         # setup from https://stackoverflow.com/a/517974
-        char = [
-            c
-            for c in unicodedata.normalize("NFD", char)
-            if not unicodedata.combining(c)
-        ]
+        char = "".join(
+            [
+                c
+                for c in unicodedata.normalize("NFD", char)
+                if not unicodedata.combining(c)
+            ]
+        )
         return char.lower() in ('a', 'e', 'i', 'o', 'u')
 
     def _alignment_matrix(
